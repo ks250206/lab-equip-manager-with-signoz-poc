@@ -16,6 +16,7 @@ pub struct RateLimiter {
     window: Duration,
     retry_after: Duration,
     state: Mutex<HashMap<String, Window>>,
+    max_entries: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -25,19 +26,61 @@ struct Window {
     blocked_until: Option<Instant>,
 }
 
+impl Window {
+    fn is_actively_blocked(&self, now: Instant) -> bool {
+        self.blocked_until.is_some_and(|until| now < until)
+    }
+}
+
 impl RateLimiter {
     pub fn new(max_attempts: u32, window: Duration, retry_after: Duration) -> Self {
+        Self::with_capacity(max_attempts, window, retry_after, 10_000)
+    }
+
+    pub fn with_capacity(
+        max_attempts: u32,
+        window: Duration,
+        retry_after: Duration,
+        max_entries: usize,
+    ) -> Self {
+        assert!(max_entries > 0, "rate limiter capacity must be positive");
         Self {
             max_attempts,
             window,
             retry_after,
             state: Mutex::new(HashMap::new()),
+            max_entries,
         }
     }
 
     pub fn check_and_hit(&self, key: &str) -> Result<(), RateLimitExceeded> {
         let mut guard = self.state.lock().expect("rate limiter poisoned");
         let now = Instant::now();
+        guard.retain(|_, entry| match entry.blocked_until {
+            Some(until) => now < until,
+            None => now.duration_since(entry.window_start) <= self.window,
+        });
+
+        if !guard.contains_key(key) && guard.len() >= self.max_entries {
+            // Never evict keys that are still blocked (Retry-After active).
+            let evict_key = guard
+                .iter()
+                .filter(|(_, entry)| !entry.is_actively_blocked(now))
+                .min_by_key(|(_, entry)| entry.window_start)
+                .map(|(k, _)| k.clone());
+            match evict_key {
+                Some(oldest_key) => {
+                    guard.remove(&oldest_key);
+                }
+                None => {
+                    // Map is full of actively blocked entries — fail closed.
+                    return Err(RateLimitExceeded {
+                        retry_after_secs: self.retry_after.as_secs().max(1),
+                    });
+                }
+            }
+        }
+
         let entry = guard.entry(key.to_string()).or_insert(Window {
             count: 0,
             window_start: now,
@@ -111,5 +154,33 @@ mod tests {
         assert!(limiter.check_and_hit("k").is_err());
         thread::sleep(Duration::from_millis(60));
         assert!(limiter.check_and_hit("k").is_ok());
+    }
+
+    #[test]
+    fn removes_expired_entries_and_bounds_tracked_keys() {
+        let limiter =
+            RateLimiter::with_capacity(3, Duration::from_millis(20), Duration::from_millis(20), 2);
+        assert!(limiter.check_and_hit("expired").is_ok());
+        thread::sleep(Duration::from_millis(25));
+        assert!(limiter.check_and_hit("current").is_ok());
+        assert_eq!(limiter.state.lock().unwrap().len(), 1);
+
+        assert!(limiter.check_and_hit("second").is_ok());
+        assert!(limiter.check_and_hit("third").is_ok());
+        assert_eq!(limiter.state.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn does_not_evict_actively_blocked_keys_under_capacity_pressure() {
+        let limiter =
+            RateLimiter::with_capacity(1, Duration::from_secs(60), Duration::from_secs(60), 1);
+        assert!(limiter.check_and_hit("blocked").is_ok());
+        assert!(limiter.check_and_hit("blocked").is_err());
+        assert!(limiter.state.lock().unwrap().contains_key("blocked"));
+
+        // Capacity full with a blocked key — new key must fail closed, not evict the block.
+        assert!(limiter.check_and_hit("attacker").is_err());
+        assert!(limiter.state.lock().unwrap().contains_key("blocked"));
+        assert!(!limiter.state.lock().unwrap().contains_key("attacker"));
     }
 }

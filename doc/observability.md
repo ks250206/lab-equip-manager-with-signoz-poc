@@ -34,7 +34,8 @@
 
 - HTTP 入来: `backend/src/api/otel_middleware.rs` が `traceparent` を抽出して親コンテキストを設定
 - handler / DB / Garage: `#[instrument]` および TraceLayer
-- ログ: JSON + span 情報（`trace_id` 相関用）
+- Backend の `tracing` event は OTLP Logs として gateway Collector へ直接送信され、アクティブ span の `trace_id` / `span_id` を LogRecord に設定する。標準出力の JSON はローカル診断用。
+- Caddy は `tracing` directive で access log に `traceID` / `spanID` を出力し、Collector の `trace_parser` が LogRecord の相関フィールドへ設定する。
 - Collector 未起動時: backend はテレメトリ初期化失敗を警告して継続起動可能
 
 ## 調査フロー（SigNoz UI）
@@ -54,9 +55,13 @@
 1. アプリでログインし予約する、または「遅いクエリを実行」
 2. SigNoz → Traces で web / api サービスをフィルタ
 3. 遅い Span を開く
-4. 同一 Trace の Logs で Axum / Caddy を確認
+4. 同一 Trace の Logs で Axum（OTLP Logs）/ Caddy（filelog）を確認
 5. Metrics で host / PostgreSQL / Garage scrape を確認
 
 ## デモ用エンドポイント
 
 `GET /api/demo/slow` — Postgres `pg_sleep(1.5)`。SigNoz で遅い SQL span を出すため。
+
+## Postgres ログ方針
+
+Compose の Postgres は `log_statement=mod`（変更系のみ）。`all` は使わず、認証まわりの SELECT リテラルが観測パイプラインへ過剰流入しないようにする。

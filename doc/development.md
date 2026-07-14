@@ -57,31 +57,39 @@ just infra-up-all   # 入口 Caddy http://localhost:8088
 
 ## ポート一覧
 
+Compose のホスト公開は **`127.0.0.1` のみ**（既定パスワードを LAN に晒さない）。
+
 | 用途 | ポート |
 |------|--------|
 | SigNoz UI | 8080 |
 | SigNoz OTLP gRPC/HTTP | 4317 / 4318 |
-| Gateway OTel Collector | 14317 / 14318 |
-| App Caddy | 8088 |
-| Backend | 3000 |
-| Frontend (dev / コンテナ静的) | 5173 |
-| Postgres | 5432 |
-| Garage S3 | 3900 |
-| Garage admin / metrics | 3903 |
+| Gateway OTel Collector | 127.0.0.1:14317 / 14318 |
+| App Caddy | 127.0.0.1:8088 |
+| Backend | 127.0.0.1:3000 |
+| Frontend (dev / コンテナ静的) | 127.0.0.1:5173 |
+| Postgres | 127.0.0.1:5432 |
+| Garage S3 | 127.0.0.1:3900 |
+| Garage web | 127.0.0.1:3902 |
+| Garage metrics | Compose 内部のみ（:3903、ホスト非公開） |
 
 ## 環境変数（主要）
 
 | 変数 | 意味 |
 |------|------|
-| `PASSWORD_PEPPER` | パスワード HMAC 鍵 |
+| `PASSWORD_PEPPER` | パスワード HMAC 鍵（`openssl rand -base64 32` 推奨） |
 | `COOKIE_SECURE` | Cookie Secure 属性 |
 | `DATABASE_URL` | アプリ用 Postgres |
 | `GARAGE_*` | S3 エンドポイント・資格情報・バケット |
+| `TRUSTED_PROXIES` | XFF を信頼するプロキシ CIDR（カンマ区切り） |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Backend → Gateway |
 | `OTEL_SERVICE_NAME` | API の service.name |
 | `FRONTEND_ORIGIN` | CORS（カンマ区切り可） |
 | `SIGNOZ_OTLP_ENDPOINT` | Gateway → SigNoz（`host:4317`） |
 | `VITE_OTEL_ENDPOINT` | Browser OTLP HTTP |
+
+`GARAGE_ADMIN_TOKEN` は Garage 管理 API 用のランダムトークンで、ホストには公開しない。`just setup` は未設定なら `.env` に生成する。
+
+`.env.example` の Postgres / Garage 既定値はローカル POC 用です。共有 LAN にポートを開けないでください。
 
 ## トラブルシュート
 

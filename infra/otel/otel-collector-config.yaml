@@ -17,6 +17,11 @@ receivers:
     operators:
       - type: json_parser
         parse_from: body
+      - type: trace_parser
+        trace_id:
+          parse_from: attributes.traceID
+        span_id:
+          parse_from: attributes.spanID
       - type: move
         from: attributes.request
         to: attributes.http_request
@@ -48,10 +53,10 @@ receivers:
   postgresql:
     endpoint: postgres:5432
     transport: tcp
-    username: reservations
-    password: reservations
+    username: ${env:POSTGRES_USER}
+    password: ${env:POSTGRES_PASSWORD}
     databases:
-      - reservations
+      - ${env:POSTGRES_DB}
     collection_interval: 30s
     tls:
       insecure: true

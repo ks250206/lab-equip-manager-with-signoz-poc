@@ -22,8 +22,17 @@ pub struct CreateEquipmentRequest {
     pub location: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateEquipmentRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub location: Option<String>,
+}
+
 #[instrument(skip(state))]
-pub async fn list_equipment(State(state): State<AppState>) -> Result<Json<Vec<Equipment>>, StatusCode> {
+pub async fn list_equipment(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<Equipment>>, StatusCode> {
     state
         .db
         .list_equipment()
@@ -77,6 +86,56 @@ pub async fn create_equipment(
     }
 }
 
+#[instrument(skip(state, body))]
+pub async fn update_equipment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateEquipmentRequest>,
+) -> Response {
+    if user.0.role_enum() != Role::Admin {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if matches!(body.name.as_deref(), Some(name) if name.trim().is_empty()) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "name_required"})),
+        )
+            .into_response();
+    }
+
+    match state
+        .db
+        .update_equipment(
+            id,
+            body.name.as_deref().map(str::trim),
+            body.description.as_deref(),
+            body.location.as_deref(),
+        )
+        .await
+    {
+        Ok(Some(equipment)) => Json(equipment).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+#[instrument(skip(state))]
+pub async fn delete_equipment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Response {
+    if user.0.role_enum() != Role::Admin {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    match state.db.delete_equipment(id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
 #[instrument(skip(state, multipart))]
 pub async fn upload_equipment_image(
     State(state): State<AppState>,
@@ -100,10 +159,7 @@ pub async fn upload_equipment_image(
         if field.name() != Some("image") {
             continue;
         }
-        let filename = field
-            .file_name()
-            .unwrap_or("image.bin")
-            .to_string();
+        let filename = field.file_name().unwrap_or("image.bin").to_string();
         let content_type = field
             .content_type()
             .unwrap_or("application/octet-stream")

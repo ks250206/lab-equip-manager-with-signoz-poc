@@ -34,6 +34,8 @@
 | GET | `/api/equipment` | 任意※ | 一覧 |
 | GET | `/api/equipment/{id}` | 任意※ | 詳細 |
 | POST | `/api/equipment` | admin | 作成 |
+| PATCH | `/api/equipment/{id}` | admin | 名前・説明・設置場所の更新（送信した項目だけ更新） |
+| DELETE | `/api/equipment/{id}` | admin | 削除（関連する予約も削除） |
 | POST | `/api/equipment/{id}/image` | admin | multipart field `image` → Garage |
 | GET | `/api/reservations` | 要ログイン | 自分の予約 |
 | POST | `/api/reservations` | 要ログイン | 作成 |
@@ -49,6 +51,7 @@
 - オブジェクトキー例: `equipment/{uuid}/{filename}`
 - ブートストラップ: `just garage-init`（layout / key / bucket allow）
 - トレース: `infra/garage/garage.toml` の `[admin] trace_sink`
+- 管理 API は Compose ネットワーク内だけで公開する。`GARAGE_ADMIN_TOKEN` は `.env` で注入し、`just setup` が未設定時にローカル用のランダム値を生成する。
 
 ## シード
 

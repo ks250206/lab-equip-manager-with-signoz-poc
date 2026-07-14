@@ -10,6 +10,12 @@ use thiserror::Error;
 
 type HmacSha256 = Hmac<Sha256>;
 
+// A valid Argon2id hash with a fixed salt and digest. It is intentionally not
+// derived from user data; verify_password still performs exactly one Argon2id
+// verification for every unknown account.
+const DUMMY_PASSWORD_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PasswordError {
     #[error("password must be at least 12 characters")]
@@ -45,11 +51,7 @@ pub fn verify_password(password: &str, pepper: &[u8], encoded: &str) -> Result<(
 /// Run a dummy Argon2id verify against a fixed hash to reduce timing leaks
 /// when the account does not exist.
 pub fn dummy_verify(pepper: &[u8]) {
-    let dummy_password = "timing-safe-dummy-password-xx";
-    let Ok(hash) = hash_password(dummy_password, pepper) else {
-        return;
-    };
-    let _ = verify_password("wrong-password-xxxxxxxxxxxxxxx", pepper, &hash);
+    let _ = verify_password("timing-safe-dummy-password-xx", pepper, DUMMY_PASSWORD_HASH);
 }
 
 fn mix_with_pepper(password: &str, pepper: &[u8]) -> Result<Vec<u8>, PasswordError> {

@@ -28,8 +28,8 @@
 - トークン本体は **DB に保存しない**
 - `sessions` テーブルには **SHA-256 ハッシュ**（`access_token_hash` / `refresh_token_hash`）のみ
 - Access が期限切れでも、Refresh が有効なセッションは **削除しない**
-- Refresh 成功時は Access と Refresh を **両方ローテーション**
-- Refresh 自体が期限切れのときだけセッションを削除し、Cookie をクリア
+- Refresh 成功時は Access と Refresh を **両方ローテーション**（DB は旧 refresh ハッシュ一致の CAS）
+- Refresh 自体が期限切れのとき、または **CAS 失敗（再利用／競合）** のときはセッションを削除し Cookie をクリア
 
 ## API
 
@@ -45,7 +45,9 @@
 
 Login / Register は **メモリ内**制限:
 
-- キー: 送信元 IP（`X-Forwarded-For` / `X-Real-IP`）およびアカウント（email）
+- キー: クライアント IP およびアカウント（email）
+- IP 解決: TCP peer が `TRUSTED_PROXIES`（CIDR）に含まれる場合のみ `X-Forwarded-For` / `X-Real-IP` を採用（Caddy → backend 向け）。信頼できない peer からの XFF は無視する
+- 容量圧迫時も **Retry-After 中のブロック済みキーは追い出ししない**（満杯なら fail-closed で 429）
 - 超過時: **429 Too Many Requests** + ヘッダ **`Retry-After: 60`**
 
 プロセス再起動でカウンタは消える（POC 想定）。

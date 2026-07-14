@@ -145,27 +145,30 @@ impl Db {
     pub async fn rotate_session(
         &self,
         session_id: Uuid,
+        previous_refresh_token: &str,
         tokens: &SessionTokens,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
+    ) -> Result<bool, sqlx::Error> {
+        let previous_refresh_token_hash = hash_token(previous_refresh_token);
+        let result = sqlx::query(
             r#"
             UPDATE sessions SET
-                access_token_hash = $2,
-                refresh_token_hash = $3,
-                access_expires_at = $4,
-                refresh_expires_at = $5,
+                access_token_hash = $3,
+                refresh_token_hash = $4,
+                access_expires_at = $5,
+                refresh_expires_at = $6,
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE id = $1 AND refresh_token_hash = $2
             "#,
         )
         .bind(session_id)
+        .bind(previous_refresh_token_hash.as_slice())
         .bind(tokens.access_token_hash.as_slice())
         .bind(tokens.refresh_token_hash.as_slice())
         .bind(tokens.access_expires_at)
         .bind(tokens.refresh_expires_at)
         .execute(&self.pool)
         .await?;
-        Ok(())
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn delete_session(&self, session_id: Uuid) -> Result<(), sqlx::Error> {
@@ -252,6 +255,42 @@ impl Db {
         .bind(image_object_key)
         .fetch_optional(&self.pool)
         .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn update_equipment(
+        &self,
+        id: Uuid,
+        name: Option<&str>,
+        description: Option<&str>,
+        location: Option<&str>,
+    ) -> Result<Option<Equipment>, sqlx::Error> {
+        sqlx::query_as::<_, Equipment>(
+            r#"
+            UPDATE equipment SET
+                name = COALESCE($2, name),
+                description = COALESCE($3, description),
+                location = COALESCE($4, location),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, name, description, location, image_object_key, created_by, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(name)
+        .bind(description)
+        .bind(location)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn delete_equipment(&self, id: Uuid) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM equipment WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     #[instrument(skip(self))]

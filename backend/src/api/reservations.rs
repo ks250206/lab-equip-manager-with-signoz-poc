@@ -10,10 +10,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    api::extractors::AuthUser,
-    domain::is_valid_range,
-    models::Reservation,
-    state::AppState,
+    api::extractors::AuthUser, domain::is_valid_range, models::Reservation, state::AppState,
 };
 
 #[derive(Debug, Deserialize)]
@@ -44,31 +41,23 @@ pub async fn create_reservation(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let overlap = match state
-        .db
-        .has_overlapping_reservation(body.equipment_id, body.starts_at, body.ends_at)
-        .await
-    {
-        Ok(v) => v,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    };
-
-    if overlap {
-        return (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": "reservation_conflict"})),
-        )
-            .into_response();
-    }
-
     match state
         .db
         .create_reservation(body.equipment_id, user.0.id, body.starts_at, body.ends_at)
         .await
     {
         Ok(r) => (StatusCode::CREATED, Json(r)).into_response(),
+        Err(err) if is_reservation_conflict(&err) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "reservation_conflict"})),
+        )
+            .into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
+}
+
+fn is_reservation_conflict(err: &sqlx::Error) -> bool {
+    matches!(err, sqlx::Error::Database(db) if db.code().as_deref() == Some("23P01"))
 }
 
 #[instrument(skip(state))]

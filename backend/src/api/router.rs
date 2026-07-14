@@ -40,7 +40,12 @@ pub fn app_router(state: AppState) -> Router {
             "/api/equipment",
             get(equipment::list_equipment).post(equipment::create_equipment),
         )
-        .route("/api/equipment/{id}", get(equipment::get_equipment))
+        .route(
+            "/api/equipment/{id}",
+            get(equipment::get_equipment)
+                .patch(equipment::update_equipment)
+                .delete(equipment::delete_equipment),
+        )
         .route(
             "/api/equipment/{id}/image",
             post(equipment::upload_equipment_image),
@@ -54,7 +59,10 @@ pub fn app_router(state: AppState) -> Router {
             post(reservations::cancel_reservation),
         )
         .route("/api/demo/slow", get(reservations::slow_probe))
-        .layer(middleware::from_fn(otel_middleware::otel_http_middleware))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            otel_middleware::otel_http_middleware,
+        ))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

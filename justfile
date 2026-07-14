@@ -34,11 +34,13 @@ obs-down:
 # --- App infrastructure (Podman Compose) ---
 
 infra-up:
+    if [[ -z "${GARAGE_ADMIN_TOKEN:-}" ]]; then echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"; exit 1; fi
     mkdir -p "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres"
     chmod -R a+rwx "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres" || true
     podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" up -d postgres garage otel-collector
 
 infra-up-all:
+    if [[ -z "${GARAGE_ADMIN_TOKEN:-}" ]]; then echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"; exit 1; fi
     mkdir -p "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres"
     chmod -R a+rwx "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres" || true
     podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" up -d --build
@@ -59,7 +61,7 @@ garage-init:
     NODE=$(podman exec signozpoc_garage_1 garage status 2>/dev/null | awk '/^([0-9a-f]{16})/ {print $1; exit}' || true)
     if [[ -z "${NODE}" ]]; then
       # Compose project naming may differ; try common names
-      CID=$(podman ps --filter name=garage --format '{{.ID}}' | head -1)
+      CID=$(podman ps --filter name=garage --format '{{{{.ID}}}}' | head -1)
       NODE=$(podman exec "$CID" garage status | awk '/^[0-9a-f]/ {print $1; exit}')
       GARAGE_CID=$CID
     else
@@ -131,6 +133,11 @@ setup:
     if [[ ! -f "{{root}}/.env" ]]; then
       cp "{{root}}/.env.example" "{{root}}/.env"
       echo "Created .env from .env.example"
+    fi
+    if ! grep -Eq '^GARAGE_ADMIN_TOKEN=.+$' "{{root}}/.env"; then
+      token="$(openssl rand -base64 32 | tr -d '\n')"
+      GARAGE_SETUP_TOKEN="$token" perl -0pi -e 's/^GARAGE_ADMIN_TOKEN=.*$/GARAGE_ADMIN_TOKEN=$ENV{GARAGE_SETUP_TOKEN}/m' "{{root}}/.env"
+      echo "Generated a local Garage admin token"
     fi
     just frontend-install
     just infra-up
