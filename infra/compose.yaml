@@ -31,11 +31,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks: [app]
 
   garage:
     image: docker.io/dxflrs/garage:v2.0.0
     environment:
-      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?run 'just setup' first}
     ports:
       - "127.0.0.1:3900:3900"
       - "127.0.0.1:3902:3902"
@@ -44,6 +45,7 @@ services:
       - garage_meta:/var/lib/garage/meta
       - garage_data:/var/lib/garage/data
     restart: unless-stopped
+    networks: [app]
 
   otel-collector:
     image: docker.io/otel/opentelemetry-collector-contrib:0.129.1
@@ -67,6 +69,7 @@ services:
         condition: service_healthy
       garage:
         condition: service_started
+    networks: [app]
 
   backend:
     build:
@@ -85,7 +88,7 @@ services:
       OTEL_SERVICE_NAME: equipment-reservation-api
       BIND_ADDR: 0.0.0.0:3000
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
-      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32,::1/128}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.30.0.0/24}
       RUST_LOG: ${RUST_LOG:-info,equipment_reservation=debug}
     ports:
       # Prefer Caddy (:8088) as the public entry; API is loopback-only.
@@ -97,6 +100,10 @@ services:
         condition: service_started
       garage:
         condition: service_started
+    networks:
+      app: {}
+      proxy:
+        aliases: [backend-proxy]
 
   frontend:
     build:
@@ -109,6 +116,7 @@ services:
       - "127.0.0.1:5173:5173"
     depends_on:
       - backend
+    networks: [web]
 
   caddy:
     image: docker.io/library/caddy:2.9-alpine
@@ -125,9 +133,21 @@ services:
     depends_on:
       - backend
       - frontend
+    networks: [app, proxy, web]
 
 volumes:
   postgres_data:
   garage_meta:
   garage_data:
   caddy_data:
+
+networks:
+  app:
+    internal: true
+  proxy:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  web:
+    internal: true

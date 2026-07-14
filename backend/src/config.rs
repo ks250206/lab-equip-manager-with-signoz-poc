@@ -52,8 +52,8 @@ impl Config {
                 .unwrap_or_else(|_| "equipment-reservation-api".into()),
             trusted_proxies: parse_trusted_proxies(
                 &env::var("TRUSTED_PROXIES").unwrap_or_else(|_| {
-                    // Default: container / loopback networks (Caddy → backend).
-                    "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32,::1/128".into()
+                    // Dedicated Compose proxy network (Caddy → backend only).
+                    "172.30.0.0/24".into()
                 }),
             )?,
         })
@@ -77,12 +77,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_default_proxy_cidrs() {
-        let nets = parse_trusted_proxies(
-            "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32,::1/128",
-        )
-        .unwrap();
-        assert_eq!(nets.len(), 5);
-        assert!(nets[0].contains(&"10.1.2.3".parse::<IpAddr>().unwrap()));
+    fn parses_dedicated_proxy_cidr() {
+        let nets = parse_trusted_proxies("172.30.0.0/24").unwrap();
+        assert_eq!(nets.len(), 1);
+        assert!(nets[0].contains(&"172.30.0.2".parse::<IpAddr>().unwrap()));
     }
 }

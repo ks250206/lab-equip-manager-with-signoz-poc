@@ -29,7 +29,7 @@ pub async fn otel_http_middleware(
         .extensions()
         .get::<MatchedPath>()
         .map(|matched| matched.as_str().to_owned())
-        .unwrap_or_else(|| path.clone());
+        .unwrap_or_else(|| "<unmatched>".to_owned());
     let parent_cx = extract_context(req.headers());
     let started_at = Instant::now();
 

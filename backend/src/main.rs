@@ -36,7 +36,10 @@ async fn main() -> anyhow::Result<()> {
 
     let db = equipment_reservation::infra::Db::new(pool);
     let store = equipment_reservation::infra::ObjectStore::new(&config).await?;
-    let state = AppState::new(db, store, config.clone());
+    // AppMetrics obtains the global MeterProvider, so construct it only after
+    // init_telemetry has installed the provider above.
+    let metrics = telemetry::AppMetrics::new();
+    let state = AppState::new(db, store, config.clone(), metrics);
     let app = app_router(state);
 
     let addr: SocketAddr = config.bind_addr.parse()?;

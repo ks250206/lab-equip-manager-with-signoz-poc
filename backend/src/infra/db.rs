@@ -8,6 +8,10 @@ use crate::{
     models::{Equipment, Reservation, SessionRow, User},
 };
 
+pub fn is_foreign_key_violation(err: &sqlx::Error) -> bool {
+    matches!(err, sqlx::Error::Database(db) if db.code().as_deref() == Some("23503"))
+}
+
 #[derive(Clone)]
 pub struct Db {
     pub pool: PgPool,

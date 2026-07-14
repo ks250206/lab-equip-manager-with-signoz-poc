@@ -22,14 +22,19 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Db, store: ObjectStore, config: Config) -> Self {
+    pub fn new(
+        db: Db,
+        store: ObjectStore,
+        config: Config,
+        metrics: crate::telemetry::AppMetrics,
+    ) -> Self {
         let window = Duration::from_secs(60);
         let retry = Duration::from_secs(60);
         Self {
             db,
             store,
             config,
-            metrics: crate::telemetry::AppMetrics::new(),
+            metrics,
             login_ip_limiter: Arc::new(RateLimiter::new(20, window, retry)),
             login_account_limiter: Arc::new(RateLimiter::new(10, window, retry)),
             register_ip_limiter: Arc::new(RateLimiter::new(10, window, retry)),

@@ -193,7 +193,14 @@ pub fn init_telemetry(service_name: &str, endpoint: &str) -> anyhow::Result<Tele
     let tracer = tracer_provider.tracer("equipment_reservation");
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // Do not feed OTLP exporter transport diagnostics back into the OTLP log
+    // pipeline. Otherwise exporter failures can amplify their own logs.
+    let env_filter = ["hyper=off", "tonic=off", "h2=off", "reqwest=off"]
+        .into_iter()
+        .fold(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            |filter, directive| filter.add_directive(directive.parse().expect("valid directive")),
+        );
 
     tracing_subscriber::registry()
         .with(env_filter)

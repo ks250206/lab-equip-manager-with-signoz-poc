@@ -136,8 +136,17 @@ setup:
     fi
     if ! grep -Eq '^GARAGE_ADMIN_TOKEN=.+$' "{{root}}/.env"; then
       token="$(openssl rand -base64 32 | tr -d '\n')"
-      GARAGE_SETUP_TOKEN="$token" perl -0pi -e 's/^GARAGE_ADMIN_TOKEN=.*$/GARAGE_ADMIN_TOKEN=$ENV{GARAGE_SETUP_TOKEN}/m' "{{root}}/.env"
+      if grep -q '^GARAGE_ADMIN_TOKEN=' "{{root}}/.env"; then
+        GARAGE_SETUP_TOKEN="$token" perl -0pi -e 's/^GARAGE_ADMIN_TOKEN=.*$/GARAGE_ADMIN_TOKEN=$ENV{GARAGE_SETUP_TOKEN}/m' "{{root}}/.env"
+      else
+        printf '\nGARAGE_ADMIN_TOKEN=%s\n' "$token" >> "{{root}}/.env"
+      fi
       echo "Generated a local Garage admin token"
+    fi
+    legacy_proxies='10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32,::1/128'
+    if grep -Fqx "TRUSTED_PROXIES=$legacy_proxies" "{{root}}/.env"; then
+      perl -0pi -e 's/^TRUSTED_PROXIES=.*$/TRUSTED_PROXIES=172.30.0.0\/24/m' "{{root}}/.env"
+      echo "Narrowed TRUSTED_PROXIES to the dedicated Caddy proxy network"
     fi
     just frontend-install
     just infra-up

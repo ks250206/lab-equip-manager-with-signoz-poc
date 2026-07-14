@@ -4,6 +4,7 @@
 
 - Rust（cargo）、`sqlx` CLI（migrate 用）
 - `just`
+- `openssl` と `perl`（`just setup` で Garage 管理トークンを生成・保存）
 - Podman（Compose プロバイダ可）
 - `vp`（Vite+）
 - SigNoz: `foundryctl`（`curl -fsSL https://signoz.io/foundry.sh | bash`）
@@ -87,7 +88,13 @@ Compose のホスト公開は **`127.0.0.1` のみ**（既定パスワードを 
 | `SIGNOZ_OTLP_ENDPOINT` | Gateway → SigNoz（`host:4317`） |
 | `VITE_OTEL_ENDPOINT` | Browser OTLP HTTP |
 
-`GARAGE_ADMIN_TOKEN` は Garage 管理 API 用のランダムトークンで、ホストには公開しない。`just setup` は未設定なら `.env` に生成する。
+`GARAGE_ADMIN_TOKEN` は Garage 管理 API 用のランダムトークンで、**管理 API のポートはホスト/LAN に公開しない**。`just setup` は未設定なら `.env` に生成する。`.env` は秘密情報として共有・コミットしない。
+
+`TRUSTED_PROXIES` は Caddy と backend 専用の `proxy` ネットワーク（既定 `172.30.0.0/24`）だけを指定する。共有 LAN や `app` ネットワーク全体を指定すると、直接接続者が `X-Forwarded-For` を偽装できる。`just setup` は旧来の広範な既定値をこの CIDR に置き換える。
+
+## 既存DBへの予約排他制約の追加
+
+`20260714000002_reservation_exclusion_constraint.sql` は、既存の active 予約が重複している場合に対象を変更せず明確なエラーで停止する。該当する予約を確認し、業務上不要な側を `cancelled` にしてから `just migrate` を再実行する。自動取消は行わない。
 
 `.env.example` の Postgres / Garage 既定値はローカル POC 用です。共有 LAN にポートを開けないでください。
 

@@ -53,7 +53,7 @@ pub async fn get_equipment(
     }
 }
 
-#[instrument(skip(state, body))]
+#[instrument(skip(state, body, user))]
 pub async fn create_equipment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -86,7 +86,7 @@ pub async fn create_equipment(
     }
 }
 
-#[instrument(skip(state, body))]
+#[instrument(skip(state, body, user))]
 pub async fn update_equipment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -120,7 +120,7 @@ pub async fn update_equipment(
     }
 }
 
-#[instrument(skip(state))]
+#[instrument(skip(state, user))]
 pub async fn delete_equipment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -132,11 +132,16 @@ pub async fn delete_equipment(
     match state.db.delete_equipment(id).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(err) if crate::infra::is_foreign_key_violation(&err) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "equipment_has_reservations"})),
+        )
+            .into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
-#[instrument(skip(state, multipart))]
+#[instrument(skip(state, multipart, user))]
 pub async fn upload_equipment_image(
     State(state): State<AppState>,
     user: AuthUser,
