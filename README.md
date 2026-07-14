@@ -60,15 +60,20 @@ SigNoz → ClickHouse → SigNoz UI (:8080)
 
 - Rust（`cargo`）、`sqlx` CLI（migrate 用）
 - [`just`](https://github.com/casey/just)
-- Podman（Compose 利用）
+- **Podman**（machine 起動済み。コンテナ実行はすべて Podman 前提）
 - [`vp`](https://viteplus.dev/)（Vite+）
 - SigNoz Foundry: `foundryctl`  
   `curl -fsSL https://signoz.io/foundry.sh | bash`
 
-Podman 上で Foundry を動かす場合は、例として次のように `DOCKER_HOST` を向けます（パスは環境依存）。
+`just infra-*` / `just obs-*` は [scripts/podman-env.zsh](scripts/podman-env.zsh) で  
+`DOCKER_HOST` を **Podman machine の API ソケット**に固定します（Colima / Docker Desktop は使いません）。
+
+`podman compose` が内部で `docker-compose` CLI を呼ぶ場合でも、接続先エンジンは Podman です。
 
 ```bash
-export DOCKER_HOST=unix://$HOME/.local/share/containers/podman/machine/podman.sock
+podman machine start   # 止まっているとき
+just infra-up
+just obs-up
 ```
 
 ## セットアップ
@@ -87,6 +92,8 @@ just seed           # サンプルユーザー・装置・予約
 
 ### ローカル開発（推奨）
 
+アプリ本体はホストで動かします（イメージ build なし）。
+
 ```bash
 just backend-dev    # http://localhost:3000
 just frontend-dev   # http://localhost:5173  （/api は Vite proxy → :3000）
@@ -95,13 +102,20 @@ just frontend-dev   # http://localhost:5173  （/api は Vite proxy → :3000）
 - アプリ UI: http://localhost:5173  
 - SigNoz UI: http://localhost:8080  
 
-### Compose でまとめて起動
+`just setup` が起動するのは **postgres / garage / otel-collector だけ**です（`just infra-up` 相当）。
+
+### Compose でアプリまでコンテナ起動（別ルート）
 
 ```bash
-just infra-up-all   # backend / frontend / caddy も含めてビルド起動
+just infra-up-all   # backend / frontend / caddy も up --build
 ```
 
+こちらは `infra/compose.yaml` の `backend` / `frontend` に `build:` があるため、**初回（と Dockerfile 変更時）はイメージビルドが走ります**。  
+ログに `docker-compose` と出ても、実行先は Podman です（Compose 実装として docker-compose CLI を呼んでいるだけ）。
+
 入口は Caddy: http://localhost:8088  
+
+普段の開発は上の「ローカル開発」を使い、`infra-up-all` は一式をコンテナに載せたいとき用です。
 
 ## シードアカウント
 
@@ -144,7 +158,9 @@ just infra-up-all   # backend / frontend / caddy も含めてビルド起動
 | `just obs-up` / `obs-down` | SigNoz Foundry 起動 / 停止 |
 | `just infra-up` | postgres, garage, otel-collector |
 | `just infra-up-all` | アプリ一式（build 含む） |
-| `just infra-down` | アプリ Compose 停止 |
+| `just infra-down` | アプリ Compose のみ停止 |
+| `just down` | アプリ Compose + SigNoz をまとめて停止（volume は保持） |
+| `just down-wipe` | 同上 + volume 削除（DB / Garage / SigNoz データ消去） |
 | `just migrate` / `seed` / `garage-init` | DB・シード・Garage |
 | `just backend-dev` / `frontend-dev` | ローカル開発 |
 | `just backend-test` / `frontend-test` / `test` | テスト |

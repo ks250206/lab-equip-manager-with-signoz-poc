@@ -6,49 +6,96 @@ root := justfile_directory()
 default:
     @just --list
 
-# --- Observability (SigNoz via Foundry) ---
+# --- Observability (SigNoz via Foundry on Podman) ---
 
 obs-up:
     #!/usr/bin/env zsh
     set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
     if ! command -v foundryctl >/dev/null 2>&1; then
       echo "foundryctl not found. Install: curl -fsSL https://signoz.io/foundry.sh | bash"
       exit 1
-    fi
-    if [[ -n "${DOCKER_HOST:-}" ]]; then
-      echo "Using DOCKER_HOST=$DOCKER_HOST"
-    elif command -v podman >/dev/null 2>&1; then
-      echo "Tip: for Podman, export DOCKER_HOST to the Podman API socket before casting."
     fi
     foundryctl cast -f "{{root}}/casting.yaml"
 
 obs-down:
     #!/usr/bin/env zsh
     set -euo pipefail
-    if [[ -f "{{root}}/pours/deployment/compose.yaml" ]]; then
-      (cd "{{root}}/pours/deployment" && docker compose down)
-    else
+    source "{{root}}/scripts/podman-env.zsh"
+    if [[ ! -f "{{root}}/pours/deployment/compose.yaml" ]]; then
       echo "No Foundry deployment found under pours/deployment"
+      exit 0
     fi
+    # Foundry emits Compose files; run them via podman (external docker-compose provider → Podman API).
+    (cd "{{root}}/pours/deployment" && podman compose down)
 
-# --- App infrastructure (Podman Compose) ---
+# --- App infrastructure (Podman) ---
 
 infra-up:
-    if [[ -z "${GARAGE_ADMIN_TOKEN:-}" ]]; then echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"; exit 1; fi
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
+    if [[ -z "${GARAGE_ADMIN_TOKEN:-}" ]]; then
+      echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"
+      exit 1
+    fi
     mkdir -p "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres"
     chmod -R a+rwx "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres" || true
     podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" up -d postgres garage otel-collector
 
 infra-up-all:
-    if [[ -z "${GARAGE_ADMIN_TOKEN:-}" ]]; then echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"; exit 1; fi
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
+    if [[ -z "${GARAGE_ADMIN_TOKEN:-}" ]]; then
+      echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"
+      exit 1
+    fi
     mkdir -p "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres"
     chmod -R a+rwx "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres" || true
     podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" up -d --build
 
 infra-down:
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
     podman compose -f "{{root}}/infra/compose.yaml" down
 
+# Stop everything for this POC (app Compose + SigNoz). Use when leaving infra / obs running.
+down:
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
+    echo "Stopping app Compose (postgres/garage/otel/backend/frontend/caddy)..."
+    podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" down || true
+    if [[ -f "{{root}}/pours/deployment/compose.yaml" ]]; then
+      echo "Stopping SigNoz (Foundry)..."
+      (cd "{{root}}/pours/deployment" && podman compose down) || true
+    else
+      echo "No Foundry deployment under pours/deployment (skip SigNoz)"
+    fi
+    echo "Done. Volumes are kept (data persists). Wipe with: just down-wipe"
+
+# Stop everything and delete Compose volumes (DB / Garage / SigNoz data).
+down-wipe:
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
+    echo "Stopping app Compose and removing volumes..."
+    podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" down -v || true
+    if [[ -f "{{root}}/pours/deployment/compose.yaml" ]]; then
+      echo "Stopping SigNoz and removing volumes..."
+      (cd "{{root}}/pours/deployment" && podman compose down -v) || true
+    else
+      echo "No Foundry deployment under pours/deployment (skip SigNoz)"
+    fi
+    echo "Done. App + SigNoz containers and volumes removed."
+    echo "Next time: just setup && just obs-up && just migrate && just garage-init && just seed"
+
 infra-logs *service:
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
     podman compose -f "{{root}}/infra/compose.yaml" logs -f {{service}}
 
 # --- Garage bootstrap ---
@@ -56,28 +103,96 @@ infra-logs *service:
 garage-init:
     #!/usr/bin/env zsh
     set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
     echo "Waiting for Garage..."
     sleep 2
-    NODE=$(podman exec signozpoc_garage_1 garage status 2>/dev/null | awk '/^([0-9a-f]{16})/ {print $1; exit}' || true)
-    if [[ -z "${NODE}" ]]; then
-      # Compose project naming may differ; try common names
-      CID=$(podman ps --filter name=garage --format '{{{{.ID}}}}' | head -1)
-      NODE=$(podman exec "$CID" garage status | awk '/^[0-9a-f]/ {print $1; exit}')
-      GARAGE_CID=$CID
-    else
-      GARAGE_CID=signozpoc_garage_1
+
+    KEY_NAME=equipment-app-key
+    BUCKET="${GARAGE_BUCKET:-equipment-images}"
+
+    # Prefer compose service name; fall back to first matching container ID.
+    # Do not use podman Go-template --format here — just treats braces as interpolation.
+    GARAGE_CID=""
+    for name in signozpoc-garage-1 signozpoc_garage_1; do
+      if podman inspect "$name" >/dev/null 2>&1; then
+        GARAGE_CID=$name
+        break
+      fi
+    done
+    if [[ -z "$GARAGE_CID" ]]; then
+      GARAGE_CID=$(podman ps -q --filter name=garage | head -1)
     fi
+    if [[ -z "$GARAGE_CID" ]]; then
+      echo "Garage container not found. Run: just infra-up"
+      exit 1
+    fi
+
+    g() { podman exec "$GARAGE_CID" /garage "$@"; }
+
+    # dxflrs/garage image exposes the CLI only as /garage (no PATH entry).
+    NODE=$(g status 2>/dev/null | awk '/^[0-9a-f]/ {print $1; exit}')
+    if [[ -z "$NODE" ]]; then
+      echo "Could not read Garage node id from: /garage status"
+      g status || true
+      exit 1
+    fi
+
+    echo "Container: $GARAGE_CID"
     echo "Node: $NODE"
-    podman exec "$GARAGE_CID" garage layout assign -z dc1 -c 1G "$NODE" || true
-    podman exec "$GARAGE_CID" garage layout apply --version 1 || true
-    podman exec "$GARAGE_CID" garage key create equipment-app-key || true
-    podman exec "$GARAGE_CID" garage bucket create "${GARAGE_BUCKET:-equipment-images}" || true
-    KEY_ID=$(podman exec "$GARAGE_CID" garage key info equipment-app-key | awk '/Key ID/ {print $NF; exit}')
-    SECRET=$(podman exec "$GARAGE_CID" garage key info equipment-app-key | awk '/Secret key/ {print $NF; exit}')
-    podman exec "$GARAGE_CID" garage bucket allow --read --write --owner "${GARAGE_BUCKET:-equipment-images}" --key equipment-app-key || true
-    echo "Created/ensured bucket ${GARAGE_BUCKET:-equipment-images}"
+    if g status 2>/dev/null | grep -q 'NO ROLE ASSIGNED'; then
+      echo "Assigning layout role..."
+      g layout assign -z dc1 -c 1GB "$NODE" >/dev/null
+      g layout apply --version 1 >/dev/null
+    else
+      echo "Cluster layout already applied"
+    fi
+
+    # Key IDs whose name column is exactly KEY_NAME (idempotent; dedupe by ID).
+    typeset -a KEY_IDS
+    KEY_IDS=("${(@f)$(
+      g key list 2>/dev/null | awk -v n="$KEY_NAME" '$1 ~ /^GK/ && $3 == n { print $1 }'
+    )}")
+    if (( ${#KEY_IDS[@]} == 0 )); then
+      echo "Creating access key: $KEY_NAME"
+      g key create "$KEY_NAME" >/dev/null
+      KEY_IDS=("${(@f)$(
+        g key list 2>/dev/null | awk -v n="$KEY_NAME" '$1 ~ /^GK/ && $3 == n { print $1 }'
+      )}")
+    elif (( ${#KEY_IDS[@]} > 1 )); then
+      keep="${KEY_IDS[1]}"
+      echo "Found ${#KEY_IDS[@]} keys named $KEY_NAME; keeping $keep, deleting extras"
+      for ((i = 2; i <= ${#KEY_IDS[@]}; i++)); do
+        echo "  delete ${KEY_IDS[i]}"
+        g key delete --yes "${KEY_IDS[i]}" >/dev/null || true
+      done
+      KEY_IDS=("$keep")
+    else
+      echo "Reusing existing access key: $KEY_NAME (${KEY_IDS[1]})"
+    fi
+    if (( ${#KEY_IDS[@]} == 0 )); then
+      echo "Failed to resolve Garage access key ID for $KEY_NAME"
+      g key list || true
+      exit 1
+    fi
+    KEY_ID="${KEY_IDS[1]}"
+
+    if g bucket list 2>/dev/null | awk -v b="$BUCKET" 'NR > 1 && index($0, b) { found = 1 } END { exit !found }'; then
+      echo "Bucket already exists: $BUCKET"
+    else
+      echo "Creating bucket: $BUCKET"
+      g bucket create "$BUCKET" >/dev/null
+    fi
+    g bucket allow --read --write --owner "$BUCKET" --key "$KEY_ID" >/dev/null || true
+
+    SECRET=$(g key info --show-secret "$KEY_ID" 2>/dev/null | awk '/Secret key:/ { print $NF; exit }')
+    echo "Created/ensured bucket $BUCKET"
     echo "Key ID: $KEY_ID"
-    echo "Update .env GARAGE_ACCESS_KEY / GARAGE_SECRET_KEY if needed."
+    if [[ -n "${SECRET:-}" ]]; then
+      echo "Secret key: $SECRET"
+      echo "Set these in .env as GARAGE_ACCESS_KEY / GARAGE_SECRET_KEY if they differ."
+    else
+      echo "Could not print secret (re-run: podman exec $GARAGE_CID /garage key info --show-secret $KEY_ID)"
+    fi
 
 # --- Backend ---
 
@@ -99,7 +214,7 @@ backend-test:
     cd "{{root}}/backend" && cargo test
 
 backend-dev:
-    cd "{{root}}/backend" && cargo run
+    cd "{{root}}/backend" && cargo run --bin equipment_reservation
 
 # --- Frontend ---
 
@@ -125,7 +240,7 @@ dev:
     just infra-up
     echo "Start backend: just backend-dev"
     echo "Start frontend: just frontend-dev"
-    echo "Optional gateway: podman compose -f infra/compose.yaml up -d caddy"
+    echo "Optional gateway: just infra-up-all  (includes caddy)"
 
 setup:
     #!/usr/bin/env zsh

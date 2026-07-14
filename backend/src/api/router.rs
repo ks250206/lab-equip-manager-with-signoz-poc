@@ -1,11 +1,11 @@
 use axum::{
-    http::HeaderValue,
+    http::{header, HeaderName, HeaderValue, Method},
     middleware,
     routing::{get, post},
     Router,
 };
 use tower_http::{
-    cors::{AllowOrigin, Any, CorsLayer},
+    cors::{AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
 
@@ -23,10 +23,25 @@ pub fn app_router(state: AppState) -> Router {
         .filter(|s| !s.is_empty())
         .filter_map(|s| s.parse().ok())
         .collect();
+    // Credentials require an explicit allow-list (no `*`) for methods/headers.
     let cors = CorsLayer::new()
         .allow_credentials(true)
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            header::ACCEPT,
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::COOKIE,
+            HeaderName::from_static("traceparent"),
+            HeaderName::from_static("tracestate"),
+            HeaderName::from_static("x-requested-with"),
+        ])
         .allow_origin(AllowOrigin::list(origins));
 
     Router::new()

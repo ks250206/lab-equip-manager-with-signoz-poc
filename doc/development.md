@@ -5,17 +5,19 @@
 - Rust（cargo）、`sqlx` CLI（migrate 用）
 - `just`
 - `openssl` と `perl`（`just setup` で Garage 管理トークンを生成・保存）
-- Podman（Compose プロバイダ可）
+- **Podman**（machine 起動済み）。コンテナ実行は Podman 前提
 - `vp`（Vite+）
 - SigNoz: `foundryctl`（`curl -fsSL https://signoz.io/foundry.sh | bash`）
 
-Podman で Foundry を動かす場合、例:
+`just infra-*` / `obs-*` / `garage-init` は [`scripts/podman-env.zsh`](../scripts/podman-env.zsh) を source し、`DOCKER_HOST` を Podman machine ソケットに **上書き固定**します。Colima / Docker Desktop の context は使いません。
 
 ```bash
-export DOCKER_HOST=unix://$HOME/.local/share/containers/podman/machine/podman.sock
+podman machine start   # 必要なら
+just infra-up
+just obs-up
 ```
 
-（環境によりソケットパスは異なる。）
+`podman compose` が `docker-compose` バイナリを Compose 実装として呼ぶのは仕様です。実行エンジンは `DOCKER_HOST` 先の Podman です。
 
 ## 初回セットアップ
 
@@ -48,7 +50,9 @@ just infra-up-all   # 入口 Caddy http://localhost:8088
 | `just obs-up` / `obs-down` | SigNoz Foundry |
 | `just infra-up` | postgres, garage, otel-collector |
 | `just infra-up-all` | 上記 + backend/frontend/caddy ビルド起動 |
-| `just infra-down` | アプリ Compose 停止 |
+| `just infra-down` | アプリ Compose のみ停止 |
+| `just down` | アプリ Compose + SigNoz をまとめて停止（volume は保持） |
+| `just down-wipe` | 同上 + volume 削除（DB / Garage / SigNoz データ消去） |
 | `just migrate` | SQLx migrate |
 | `just seed` | 管理者・ユーザー・装置シード |
 | `just garage-init` | Garage layout / key / bucket |

@@ -19,7 +19,7 @@ SigNoz 分散トレーシング検証用の **装置予約システム POC** で
 
 - **App**: React (Vite+) + Axum + SQLx + PostgreSQL + Garage (S3) + Caddy
 - **Obs**: OpenTelemetry SDK / tracing-opentelemetry → `otel/opentelemetry-collector-contrib` → **SigNoz** → ClickHouse
-- **Runtime**: Podman（Compose）+ SigNoz は Foundry（`casting.yaml`）
+- **Runtime**: **Podman**（Compose ファイルは使うが実行エンジンは Podman。Colima / Docker Desktop 非前提）
 - **Task runner**: `just`
 
 ## 採用しないもの
