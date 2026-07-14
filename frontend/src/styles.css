@@ -1,0 +1,117 @@
+:root {
+  color-scheme: light;
+  --bg: #f3efe6;
+  --ink: #1c2430;
+  --accent: #0b6e4f;
+  --panel: #fffdf8;
+  --line: #d7d0c4;
+  --error: #9b2226;
+  --ok: #0b6e4f;
+  font-family: "IBM Plex Sans", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  line-height: 1.5;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, #e7f0ea, transparent 40%),
+    linear-gradient(160deg, #f7f3ea, #ebe4d7);
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 1.5rem;
+}
+
+h1,
+h2 {
+  font-family: "IBM Plex Serif", "Hiragino Mincho ProN", serif;
+  letter-spacing: 0.01em;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+input {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+}
+
+button,
+a {
+  color: var(--accent);
+}
+
+button {
+  border: 1px solid var(--accent);
+  background: transparent;
+  padding: 0.45rem 0.8rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.active,
+button[type="submit"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.75rem;
+}
+
+.muted {
+  color: #5c6570;
+}
+
+.error {
+  color: var(--error);
+}
+
+.ok {
+  color: var(--ok);
+}

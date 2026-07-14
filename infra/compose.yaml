@@ -1,0 +1,122 @@
+name: signozpoc
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reservations}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reservations}
+      POSTGRES_DB: ${POSTGRES_DB:-reservations}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./logs/postgres:/var/log/postgres
+    command:
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
+      - log_directory=/var/log/postgres
+      - -c
+      - log_filename=postgresql.log
+      - -c
+      - log_statement=all
+      - -c
+      - log_destination=stderr
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reservations} -d ${POSTGRES_DB:-reservations}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  garage:
+    image: docker.io/dxflrs/garage:v2.0.0
+    ports:
+      - "3900:3900"
+      - "3902:3902"
+      - "3903:3903"
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+    restart: unless-stopped
+
+  otel-collector:
+    image: docker.io/otel/opentelemetry-collector-contrib:0.129.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      SIGNOZ_OTLP_ENDPOINT: ${SIGNOZ_OTLP_ENDPOINT:-host.containers.internal:4317}
+    ports:
+      - "14317:4317"
+      - "14318:4318"
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+      - ./logs/caddy:/var/log/caddy:ro
+      - ./logs/postgres:/var/log/postgres:ro
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      garage:
+        condition: service_started
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-reservations}:${POSTGRES_PASSWORD:-reservations}@postgres:5432/${POSTGRES_DB:-reservations}
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:-change-me-to-a-long-random-pepper-value}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      GARAGE_ENDPOINT: http://garage:3900
+      GARAGE_REGION: garage
+      GARAGE_ACCESS_KEY: ${GARAGE_ACCESS_KEY:-GK1234567890abcdef}
+      GARAGE_SECRET_KEY: ${GARAGE_SECRET_KEY:-abcdefghijklmnopqrstuvwxyz0123456789ABCDEF}
+      GARAGE_BUCKET: ${GARAGE_BUCKET:-equipment-images}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: equipment-reservation-api
+      BIND_ADDR: 0.0.0.0:3000
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
+      RUST_LOG: ${RUST_LOG:-info,equipment_reservation=debug}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      garage:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE_URL: ""
+      VITE_OTEL_ENDPOINT: http://localhost:14318
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  caddy:
+    image: docker.io/library/caddy:2.9-alpine
+    ports:
+      - "8088:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./logs/caddy:/var/log/caddy
+      - caddy_data:/data
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+  garage_meta:
+  garage_data:
+  caddy_data:

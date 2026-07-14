@@ -1,0 +1,12 @@
+.env
+.env.local
+pours/
+**/target/
+**/node_modules/
+**/dist/
+**/.DS_Store
+infra/logs/**/*.log
+*.log
+.idea/
+.vscode/
+backend/Cargo.lock.bak

@@ -1,0 +1,109 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - http://localhost:*
+            - http://127.0.0.1:*
+
+  filelog/caddy:
+    include:
+      - /var/log/caddy/*.log
+    start_at: beginning
+    operators:
+      - type: json_parser
+        parse_from: body
+      - type: move
+        from: attributes.request
+        to: attributes.http_request
+      - type: add
+        field: resource["service.name"]
+        value: caddy
+
+  filelog/postgres:
+    include:
+      - /var/log/postgres/*.log
+    start_at: beginning
+    operators:
+      - type: regex_parser
+        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? \w+) \[(?P<pid>\d+)\] (?P<level>\w+):\s+(?P<message>.*)$'
+        on_error: send
+      - type: add
+        field: resource["service.name"]
+        value: postgres
+
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu: {}
+      memory: {}
+      network: {}
+      filesystem: {}
+      load: {}
+
+  postgresql:
+    endpoint: postgres:5432
+    transport: tcp
+    username: reservations
+    password: reservations
+    databases:
+      - reservations
+    collection_interval: 30s
+    tls:
+      insecure: true
+
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: garage
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["garage:3903"]
+          metrics_path: /metrics
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: local
+        action: upsert
+
+exporters:
+  otlp:
+    endpoint: ${env:SIGNOZ_OTLP_ENDPOINT}
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      level: detailed
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp, debug]
+    metrics:
+      receivers: [otlp, hostmetrics, postgresql, prometheus]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp, debug]
+    logs:
+      receivers: [otlp, filelog/caddy, filelog/postgres]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp, debug]

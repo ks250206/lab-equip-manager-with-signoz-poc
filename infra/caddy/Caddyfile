@@ -1,0 +1,26 @@
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+		format json
+	}
+
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle /health {
+		reverse_proxy backend:3000
+	}
+
+	handle {
+		reverse_proxy frontend:5173
+	}
+}

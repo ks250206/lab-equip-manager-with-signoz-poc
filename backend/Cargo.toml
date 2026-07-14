@@ -1,0 +1,51 @@
+[package]
+name = "equipment_reservation"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "equipment_reservation"
+path = "src/main.rs"
+
+[[bin]]
+name = "seed"
+path = "src/bin/seed.rs"
+
+[dependencies]
+anyhow = "1"
+argon2 = "0.5"
+async-trait = "0.1"
+aws-credential-types = "1"
+aws-sdk-s3 = "1"
+axum = { version = "0.8", features = ["macros", "multipart"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+hex = "0.4"
+hmac = "0.12"
+http = "1"
+opentelemetry = { version = "0.28", features = ["metrics", "trace"] }
+opentelemetry_sdk = { version = "0.28", features = ["rt-tokio", "metrics", "trace"] }
+opentelemetry-http = "0.28"
+opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic", "trace", "metrics", "logs"] }
+opentelemetry-semantic-conventions = "0.28"
+password-hash = "0.5"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate"] }
+thiserror = "2"
+time = "0.3"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "request-id"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.29"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
