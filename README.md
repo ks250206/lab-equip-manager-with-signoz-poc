@@ -81,14 +81,15 @@ just obs-up
 ```bash
 cp .env.example .env
 
-just setup          # .env 確認・frontend install・postgres/garage/otel 起動
-just obs-up         # SigNoz（Foundry）
+just setup          # .env 確認・frontend install・SigNoz・postgres/garage/otel 起動
 just migrate        # DB マイグレーション
 just garage-init    # layout / key / bucket。表示された Key を .env の GARAGE_* に反映
 just seed           # サンプルユーザー・装置・予約
 ```
 
 リポジトリ管理のダッシュボードを使う場合は、SigNoz で Editor 権限のサービスアカウント API キーを作成して `.env` の `SIGNOZ_API_KEY` に設定し、起動後に同期します。
+
+`just obs-up` はこの POC の JSON 定義に必要な SigNoz Dashboard v2 を有効化します。
 
 ```bash
 just dashboard-sync
@@ -108,7 +109,7 @@ just frontend-dev   # http://localhost:5173  （/api は Vite proxy → :3000）
 - アプリ UI: http://localhost:5173  
 - SigNoz UI: http://localhost:8080  
 
-`just setup` が起動するのは **postgres / garage / otel-collector だけ**です（`just infra-up` 相当）。
+`just setup` は SigNoz を先に起動し、そのネットワークへ接続した gateway Collector と **postgres / garage** を起動します。
 
 ### Compose でアプリまでコンテナ起動（別ルート）
 

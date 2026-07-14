@@ -15,7 +15,7 @@
 |------|-----|
 | App → Gateway Collector | `OTEL_EXPORTER_OTLP_ENDPOINT` 既定 `http://localhost:14317`（gRPC） |
 | Browser → Gateway | `VITE_OTEL_ENDPOINT` 既定 `http://localhost:14318`（HTTP OTLP `/v1/traces`） |
-| Gateway → SigNoz | `SIGNOZ_OTLP_ENDPOINT` 既定 `host.containers.internal:4317`（スキームなし） |
+| Gateway → SigNoz | `SIGNOZ_GATEWAY_OTLP_ENDPOINT` 既定 `signoz-ingester:4317`（Foundry の `signoz-network` 内） |
 | SigNoz UI | `http://localhost:8080` |
 
 ## Collector 設定
@@ -73,6 +73,8 @@ just dashboard-sync
 - **Infrastructure and Object Storage**: host CPU と Garage RPC request rate
 
 ダッシュボードを変更したら `just dashboard-sync` を再実行する。これにより UI 上の手編集を正として残さず、レビュー可能な JSON を正とする。
+
+定義は SigNoz Dashboard v2 API を利用する。`just obs-up` は `infra/signoz/compose.dashboard-v2.yaml` を Foundry 生成 Compose に重ね、`use_dashboard_v2` を有効化してから SigNoz コンテナを再作成する。Foundry の `pours/deployment/compose.yaml` は編集しない。
 
 ## デモ用エンドポイント
 

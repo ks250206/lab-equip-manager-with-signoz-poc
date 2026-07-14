@@ -52,7 +52,7 @@ just frontend-test   # または frontend で vp check && vp test --run
 
 ```bash
 cp .env.example .env
-just setup && just obs-up && just migrate && just garage-init && just seed
+just setup && just migrate && just garage-init && just seed
 just backend-dev   # 別ターミナル
 just frontend-dev
 ```

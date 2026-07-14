@@ -3,6 +3,7 @@ set -eu
 
 : "${SIGNOZ_API_KEY:?SIGNOZ_API_KEY must be set}"
 : "${SIGNOZ_ENDPOINT:=http://127.0.0.1:8080}"
+SIGNOZ_ENDPOINT="${SIGNOZ_ENDPOINT%/}"
 
 dashboard=/dashboards/equipment-reservation-observability.json
 name=equipment-reservation-observability
@@ -33,10 +34,20 @@ else
   echo "Creating SigNoz dashboard $name"
 fi
 
+response=/tmp/dashboard-sync-response.json
 curl --fail-with-body --silent --show-error \
   -X "$method" \
   -H "SigNoz-Api-Key: $SIGNOZ_API_KEY" \
   -H 'Content-Type: application/json' \
   --data-binary "@$dashboard" \
+  -o "$response" \
   "$url"
-echo
+
+result_id="$(sed -n 's/.*"data":{"id":"\([^"]*\)".*/\1/p' "$response")"
+if [ -z "$result_id" ]; then
+  echo "SigNoz returned no dashboard id" >&2
+  cat "$response" >&2
+  exit 1
+fi
+
+echo "Dashboard synced: $SIGNOZ_ENDPOINT/dashboard/$result_id"

@@ -49,9 +49,12 @@ services:
 
   otel-collector:
     image: docker.io/otel/opentelemetry-collector-contrib:0.129.1
+    # Postgres/Caddy create log files with restrictive ownership. The files are
+    # mounted read-only, and this is only used to let filelog read them.
+    user: "0"
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
-      SIGNOZ_OTLP_ENDPOINT: ${SIGNOZ_OTLP_ENDPOINT:-host.containers.internal:4317}
+      SIGNOZ_OTLP_ENDPOINT: ${SIGNOZ_GATEWAY_OTLP_ENDPOINT:-signoz-ingester:4317}
       POSTGRES_USER: ${POSTGRES_USER:-reservations}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reservations}
       POSTGRES_DB: ${POSTGRES_DB:-reservations}
@@ -62,14 +65,12 @@ services:
       - ./otel/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
       - ./logs/caddy:/var/log/caddy:ro
       - ./logs/postgres:/var/log/postgres:ro
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       garage:
         condition: service_started
-    networks: [app]
+    networks: [app, signoz]
 
   backend:
     build:
@@ -165,3 +166,8 @@ networks:
         - subnet: 172.30.0.0/24
   web:
     internal: true
+  # Created by Foundry's `just obs-up`; the collector sends directly to its
+  # ingester instead of trying to cross the Podman machine host boundary.
+  signoz:
+    external: true
+    name: signoz-network

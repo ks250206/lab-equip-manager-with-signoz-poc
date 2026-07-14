@@ -17,6 +17,9 @@ obs-up:
       exit 1
     fi
     foundryctl cast -f "{{root}}/casting.yaml"
+    # Dashboard JSON uses SigNoz Dashboard v2. Foundry regenerates its Compose
+    # file, so layer the repository-owned feature override on every startup.
+    (cd "{{root}}/pours/deployment" && podman compose -f compose.yaml -f "{{root}}/infra/signoz/compose.dashboard-v2.yaml" up -d --force-recreate signoz-signoz-0)
 
 obs-down:
     #!/usr/bin/env zsh
@@ -50,6 +53,10 @@ infra-up:
       echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"
       exit 1
     fi
+    if ! podman network exists signoz-network; then
+      echo "SigNoz network is missing; run just obs-up first"
+      exit 1
+    fi
     mkdir -p "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres"
     chmod -R a+rwx "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres" || true
     podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" up -d postgres garage otel-collector
@@ -60,6 +67,10 @@ infra-up-all:
     source "{{root}}/scripts/podman-env.zsh"
     if [[ -z "${GARAGE_ADMIN_TOKEN:-}" ]]; then
       echo "GARAGE_ADMIN_TOKEN is unset; run just setup first"
+      exit 1
+    fi
+    if ! podman network exists signoz-network; then
+      echo "SigNoz network is missing; run just obs-up first"
       exit 1
     fi
     mkdir -p "{{root}}/infra/logs/caddy" "{{root}}/infra/logs/postgres"
@@ -101,7 +112,7 @@ down-wipe:
       echo "No Foundry deployment under pours/deployment (skip SigNoz)"
     fi
     echo "Done. App + SigNoz containers and volumes removed."
-    echo "Next time: just setup && just obs-up && just migrate && just garage-init && just seed"
+    echo "Next time: just setup && just migrate && just garage-init && just seed"
 
 infra-logs *service:
     #!/usr/bin/env zsh
@@ -275,7 +286,8 @@ setup:
       echo "Narrowed TRUSTED_PROXIES to the dedicated Caddy proxy network"
     fi
     just frontend-install
+    just obs-up
     just infra-up
     echo "Run migrations after Postgres is healthy: just migrate"
     echo "Bootstrap Garage: just garage-init"
-    echo "Start SigNoz: just obs-up"
+    echo "SigNoz was started before the gateway Collector so it can join the SigNoz network"

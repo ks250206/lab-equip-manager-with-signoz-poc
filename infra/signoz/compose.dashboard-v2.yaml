@@ -1,0 +1,6 @@
+# Applied alongside Foundry's generated compose.yaml. Keep this separately so
+# `foundryctl cast` can regenerate pours/deployment without losing the setting.
+services:
+  signoz-signoz-0:
+    environment:
+      SIGNOZ_FLAGGER_CONFIG_BOOLEAN_USE__DASHBOARD__V2: "true"

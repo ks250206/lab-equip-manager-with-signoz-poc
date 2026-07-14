@@ -24,7 +24,6 @@ just obs-up
 ```bash
 cp .env.example .env
 just setup          # frontend install + infra (postgres/garage/otel)
-just obs-up         # SigNoz
 just migrate
 just garage-init    # 出力された Key を .env の GARAGE_* に反映
 just seed
@@ -49,7 +48,7 @@ just infra-up-all   # 入口 Caddy http://localhost:8088
 |----------|------|
 | `just obs-up` / `obs-down` | SigNoz Foundry |
 | `just dashboard-sync` | リポジトリ管理の JSON ダッシュボードを SigNoz API へ同期 |
-| `just infra-up` | postgres, garage, otel-collector |
+| `just infra-up` | postgres, garage, otel-collector（事前に `just obs-up` が必要） |
 | `just infra-up-all` | 上記 + backend/frontend/caddy ビルド起動 |
 | `just infra-down` | アプリ Compose のみ停止 |
 | `just down` | アプリ Compose + SigNoz をまとめて停止（volume は保持） |
@@ -90,7 +89,7 @@ Compose のホスト公開は **`127.0.0.1` のみ**（既定パスワードを 
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Backend → Gateway |
 | `OTEL_SERVICE_NAME` | API の service.name |
 | `FRONTEND_ORIGIN` | CORS（カンマ区切り可） |
-| `SIGNOZ_OTLP_ENDPOINT` | Gateway → SigNoz（`host:4317`） |
+| `SIGNOZ_GATEWAY_OTLP_ENDPOINT` | Gateway → SigNoz ingester（既定 `signoz-ingester:4317`） |
 | `SIGNOZ_API_KEY` | `just dashboard-sync` 用の Editor 権限 SigNoz API キー |
 | `SIGNOZ_ENDPOINT` | ダッシュボード同期先（既定 `http://127.0.0.1:8080`） |
 | `VITE_OTEL_ENDPOINT` | Browser OTLP HTTP |
@@ -127,7 +126,7 @@ just migrate && just seed
 
 1. `just obs-up` で SigNoz が上がっているか（UI :8080）
 2. Gateway が `14317/14318` で listen しているか
-3. `SIGNOZ_OTLP_ENDPOINT` がコンテナから SigNoz に届くか（`host.containers.internal:4317`）
+3. `signoz-network` が存在し、gateway Collector が `signoz-ingester:4317` に届くか
 4. Frontend の CORS / OTLP エンドポイント（ブラウザは `14318`）
 
 ### Garage 画像アップロードが 502
