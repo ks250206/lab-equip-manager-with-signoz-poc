@@ -29,6 +29,17 @@ obs-down:
     # Foundry emits Compose files; run them via podman (external docker-compose provider → Podman API).
     (cd "{{root}}/pours/deployment" && podman compose down)
 
+# Sync the checked-in SigNoz dashboard through the authenticated API.
+dashboard-sync:
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    source "{{root}}/scripts/podman-env.zsh"
+    if [[ -z "${SIGNOZ_API_KEY:-}" ]]; then
+      echo "SIGNOZ_API_KEY is unset; create an Editor API key in SigNoz and add it to .env"
+      exit 1
+    fi
+    podman compose -f "{{root}}/infra/compose.yaml" --env-file "{{root}}/.env" --profile dashboard run --rm dashboard-provisioner
+
 # --- App infrastructure (Podman) ---
 
 infra-up:
@@ -149,15 +160,15 @@ garage-init:
 
     # Key IDs whose name column is exactly KEY_NAME (idempotent; dedupe by ID).
     typeset -a KEY_IDS
-    KEY_IDS=("${(@f)$(
+    KEY_IDS=(${(f)"$(
       g key list 2>/dev/null | awk -v n="$KEY_NAME" '$1 ~ /^GK/ && $3 == n { print $1 }'
-    )}")
+    )"})
     if (( ${#KEY_IDS[@]} == 0 )); then
       echo "Creating access key: $KEY_NAME"
       g key create "$KEY_NAME" >/dev/null
-      KEY_IDS=("${(@f)$(
+      KEY_IDS=(${(f)"$(
         g key list 2>/dev/null | awk -v n="$KEY_NAME" '$1 ~ /^GK/ && $3 == n { print $1 }'
-      )}")
+      )"})
     elif (( ${#KEY_IDS[@]} > 1 )); then
       keep="${KEY_IDS[1]}"
       echo "Found ${#KEY_IDS[@]} keys named $KEY_NAME; keeping $keep, deleting extras"

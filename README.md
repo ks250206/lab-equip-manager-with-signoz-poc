@@ -88,6 +88,12 @@ just garage-init    # layout / key / bucket。表示された Key を .env の G
 just seed           # サンプルユーザー・装置・予約
 ```
 
+リポジトリ管理のダッシュボードを使う場合は、SigNoz で Editor 権限のサービスアカウント API キーを作成して `.env` の `SIGNOZ_API_KEY` に設定し、起動後に同期します。
+
+```bash
+just dashboard-sync
+```
+
 `infra/logs/*` は Postgres / Caddy が書き込みます。`just infra-up` が権限を緩めますが、Permission denied が出たら [doc/development.md](doc/development.md) のトラブルシュートを参照してください。
 
 ### ローカル開発（推奨）
@@ -138,12 +144,13 @@ just infra-up-all   # backend / frontend / caddy も up --build
 
 ## SigNoz での確認（スモーク）
 
-1. UI でログインし、装置を予約する（または「遅いクエリを実行」）
-2. SigNoz（http://localhost:8080）→ **Traces** で  
+1. `just dashboard-sync` を実行し、SigNoz の **Dashboards** で「装置予約 POC — Observability」を開く
+2. UI でログインし、装置を予約する（または「遅いクエリを実行」）
+3. ダッシュボードの API Golden Signals / Trace・Log 相関 / Infrastructure and Object Storage を確認する
+4. SigNoz（http://localhost:8080）→ **Traces** で
    `equipment-reservation-web` / `equipment-reservation-api` を確認
-3. 遅い Span（例: `slow_probe` / `pg_sleep` / Garage put）を開く
-4. 同じ **trace_id** の **Logs** で Axum の OTLP Logs や Caddy access log を突き合わせる
-5. **Metrics** で host / PostgreSQL / Garage scrape などを確認
+5. 遅い Span（例: `slow_probe` / `pg_sleep` / Garage put）を開く
+6. 同じ **trace_id** の **Logs** で Axum の OTLP Logs や Caddy access log を突き合わせる
 
 意図する調査フロー:
 
@@ -156,6 +163,7 @@ just infra-up-all   # backend / frontend / caddy も up --build
 | コマンド | 内容 |
 |----------|------|
 | `just obs-up` / `obs-down` | SigNoz Foundry 起動 / 停止 |
+| `just dashboard-sync` | 読み取り専用マウントした JSON 定義を SigNoz へ作成・更新 |
 | `just infra-up` | postgres, garage, otel-collector |
 | `just infra-up-all` | アプリ一式（build 含む） |
 | `just infra-down` | アプリ Compose のみ停止 |

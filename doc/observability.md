@@ -58,6 +58,22 @@
 4. 同一 Trace の Logs で Axum（OTLP Logs）/ Caddy（filelog）を確認
 5. Metrics で host / PostgreSQL / Garage scrape を確認
 
+## リポジトリ管理ダッシュボード
+
+定義は [`infra/signoz/dashboards/equipment-reservation-observability.json`](../infra/signoz/dashboards/equipment-reservation-observability.json) に固定する。SigNoz UI で Editor 権限のサービスアカウント API キーを作成して `.env` の `SIGNOZ_API_KEY` に設定した後、以下を実行する。
+
+```bash
+just dashboard-sync
+```
+
+`dashboard-provisioner` は one-shot コンテナであり、JSON 定義と同期スクリプトを `:ro` でマウントする。同じ内部名のダッシュボードがあれば更新、なければ作成する。定義には次の 3 セクションを含める。
+
+- **API Golden Signals**: route 別 request rate、4xx/5xx、p95 latency、slow probe、status、trace volume
+- **Trace / Log Correlation**: API / Caddy logs、PostgreSQL connections、trace_id を含む API ログ
+- **Infrastructure and Object Storage**: host CPU と Garage RPC request rate
+
+ダッシュボードを変更したら `just dashboard-sync` を再実行する。これにより UI 上の手編集を正として残さず、レビュー可能な JSON を正とする。
+
 ## デモ用エンドポイント
 
 `GET /api/demo/slow` — Postgres `pg_sleep(1.5)`。SigNoz で遅い SQL span を出すため。

@@ -135,6 +135,20 @@ services:
       - frontend
     networks: [app, proxy, web]
 
+  # Run explicitly with `just dashboard-sync`.  The checked-in definition and
+  # script are mounted read-only; only the SigNoz dashboard record is mutated.
+  dashboard-provisioner:
+    image: docker.io/curlimages/curl:8.12.1
+    profiles: [dashboard]
+    network_mode: host
+    environment:
+      SIGNOZ_API_KEY: ${SIGNOZ_API_KEY:?create an Editor SigNoz API key in .env first}
+      SIGNOZ_ENDPOINT: ${SIGNOZ_ENDPOINT:-http://127.0.0.1:8080}
+    volumes:
+      - ./signoz/dashboards:/dashboards:ro
+      - ./signoz/provision-dashboard.sh:/provision-dashboard.sh:ro
+    entrypoint: ["/bin/sh", "/provision-dashboard.sh"]
+
 volumes:
   postgres_data:
   garage_meta:

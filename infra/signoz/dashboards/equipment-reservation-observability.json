@@ -1,0 +1,455 @@
+{
+  "schemaVersion": "v6",
+  "name": "equipment-reservation-observability",
+  "tags": [
+    { "key": "project", "value": "signozpoc" },
+    { "key": "domain", "value": "equipment-reservation" },
+    { "key": "managed-by", "value": "repository" }
+  ],
+  "spec": {
+    "display": {
+      "name": "装置予約 POC — Observability",
+      "description": "予約 API の Golden Signals、Trace/Log 相関、PostgreSQL・Garage・ホストを一画面で調査するための管理ダッシュボード。"
+    },
+    "duration": "6h",
+    "refreshInterval": "30s",
+    "datasources": {
+      "SigNozDatasource": {
+        "default": true,
+        "plugin": { "kind": "signoz/Datasource", "spec": {} }
+      }
+    },
+    "variables": [],
+    "panels": {
+      "api-request-rate": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "API request rate by route", "description": "HTTP リクエスト数/秒。予期しないパスや急なトラフィック増加を確認する。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": false },
+              "formatting": { "unit": "reqps", "decimalPrecision": "2" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "none", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": []
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "metrics",
+                    "aggregations": [{ "metricName": "http.server.request.count", "reduceTo": "sum", "spaceAggregation": "sum", "timeAggregation": "rate" }],
+                    "filter": { "expression": "service.name = 'equipment-reservation-api'" },
+                    "groupBy": [{ "name": "http.route", "fieldDataType": "string", "fieldContext": "tag" }],
+                    "legend": "{{http.route}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "api-error-rate": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "API 4xx / 5xx rate", "description": "エントリーポイント span を状態コード別に集計。認証・予約競合・サーバー障害を区別する。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": false },
+              "formatting": { "unit": "reqps", "decimalPrecision": "2" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "none", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": []
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "traces",
+                    "aggregations": [{ "expression": "count()" }],
+                    "filter": { "expression": "service.name = 'equipment-reservation-api' AND isEntryPoint = true AND http.response.status_code >= 400" },
+                    "groupBy": [{ "name": "http.response.status_code", "fieldDataType": "int64", "fieldContext": "tag" }],
+                    "legend": "HTTP {{http.response.status_code}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "api-p95-latency": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "API p95 latency by route", "description": "アプリが記録する HTTP duration histogram。遅い経路から Trace 詳細へドリルダウンする入口。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": true },
+              "formatting": { "unit": "s", "decimalPrecision": "3" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "gradient", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": [{ "value": 1, "unit": "s", "color": "Orange", "label": "slow" }]
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "metrics",
+                    "aggregations": [{ "metricName": "http.server.request.duration", "reduceTo": "avg", "spaceAggregation": "p95", "timeAggregation": "avg" }],
+                    "filter": { "expression": "service.name = 'equipment-reservation-api'" },
+                    "groupBy": [{ "name": "http.route", "fieldDataType": "string", "fieldContext": "tag" }],
+                    "legend": "{{http.route}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "slow-probe-latency": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Slow-query demo latency", "description": "GET /api/demo/slow の Trace 数。デモ実行後、遅い PostgreSQL span と同一 trace_id のログを辿る。" },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time" },
+              "formatting": { "unit": "none", "decimalPrecision": "0" },
+              "thresholds": [{ "value": 1, "operator": "above_or_equal", "unit": "none", "color": "Orange", "format": "text" }]
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "traces",
+                    "aggregations": [{ "expression": "count()" }],
+                    "filter": { "expression": "service.name = 'equipment-reservation-api' AND url.path = '/api/demo/slow'" }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "status-distribution": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "HTTP response distribution", "description": "成功・認証失敗・予約競合・サーバーエラーの比率。" },
+          "plugin": {
+            "kind": "signoz/PieChartPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time" },
+              "formatting": { "unit": "none", "decimalPrecision": "0" },
+              "legend": { "position": "right", "mode": "list", "customColors": {} }
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "traces",
+                    "aggregations": [{ "expression": "count()" }],
+                    "filter": { "expression": "service.name = 'equipment-reservation-api' AND isEntryPoint = true" },
+                    "groupBy": [{ "name": "http.response.status_code", "fieldDataType": "int64", "fieldContext": "tag" }],
+                    "legend": "{{http.response.status_code}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "api-trace-volume": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "API trace throughput", "description": "Trace 数/秒。リクエスト量とログ量を照合する基準線。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": false },
+              "formatting": { "unit": "ops", "decimalPrecision": "2" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "none", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": []
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "traces",
+                    "aggregations": [{ "expression": "count()" }],
+                    "filter": { "expression": "service.name = 'equipment-reservation-api' AND isEntryPoint = true" },
+                    "groupBy": [{ "name": "name", "fieldDataType": "string", "fieldContext": "span" }],
+                    "legend": "{{name}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "api-log-volume": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "API log volume", "description": "OTLP Logs と Trace の到着量を比較。ログ export の異常を早く検知する。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": false },
+              "formatting": { "unit": "ops", "decimalPrecision": "2" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "none", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": []
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "logs",
+                    "aggregations": [{ "expression": "count()" }],
+                    "filter": { "expression": "service.name = 'equipment-reservation-api'" }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "correlated-api-logs": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Correlated API logs", "description": "trace_id を持つ API ログ。Trace 詳細と同じ ID で相関を確認する。" },
+          "plugin": {
+            "kind": "signoz/ListPanel",
+            "spec": {
+              "selectFields": [
+                { "name": "timestamp", "signal": "logs" },
+                { "name": "body", "signal": "logs" },
+                { "name": "trace_id", "fieldDataType": "string", "signal": "logs" }
+              ]
+            }
+          },
+          "queries": [
+            {
+              "kind": "raw",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "logs",
+                    "filter": { "expression": "service.name = 'equipment-reservation-api'" },
+                    "order": [
+                      { "key": { "name": "timestamp" }, "direction": "desc" },
+                      { "key": { "name": "id" }, "direction": "desc" }
+                    ],
+                    "limit": 50
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "caddy-log-volume": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Caddy access log volume", "description": "Gateway ログの到着量。API trace / backend log と合わせて入口から追跡する。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": false },
+              "formatting": { "unit": "ops", "decimalPrecision": "2" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "none", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": []
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "logs",
+                    "aggregations": [{ "expression": "count()" }],
+                    "filter": { "expression": "service.name = 'caddy'" }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "postgres-connections": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "PostgreSQL backends", "description": "PostgreSQL receiver の接続数。遅い予約操作時の DB 負荷と照合する。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": true },
+              "formatting": { "unit": "none", "decimalPrecision": "0" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "gradient", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": []
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "metrics",
+                    "aggregations": [{ "metricName": "postgresql.backends", "reduceTo": "avg", "spaceAggregation": "sum", "timeAggregation": "avg" }],
+                    "filter": { "expression": "service.name = 'postgresql'" },
+                    "groupBy": [{ "name": "db.state", "fieldDataType": "string", "fieldContext": "tag" }],
+                    "legend": "{{db.state}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "host-cpu": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Host CPU utilization", "description": "hostmetrics receiver の CPU 利用率。Collector / DB / Garage を含む基盤の飽和を確認する。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": true },
+              "formatting": { "unit": "percentunit", "decimalPrecision": "1" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "gradient", "spanGaps": {} },
+              "axes": { "softMin": 0, "softMax": 1, "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": [{ "value": 0.8, "unit": "percentunit", "color": "Orange", "label": "high CPU" }]
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A", "signal": "metrics",
+                    "aggregations": [{ "metricName": "system.cpu.utilization", "reduceTo": "avg", "spaceAggregation": "avg", "timeAggregation": "avg" }],
+                    "filter": { "expression": "state != 'idle'" },
+                    "groupBy": [{ "name": "state", "fieldDataType": "string", "fieldContext": "tag" }],
+                    "legend": "{{state}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "garage-request-rate": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Garage RPC request rate", "description": "Garage Prometheus scrape の RPC 呼出量。画像アップロード時の外部 I/O を確認する。" },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": { "timePreference": "global_time", "fillSpans": false },
+              "formatting": { "unit": "reqps", "decimalPrecision": "2" },
+              "chartAppearance": { "lineInterpolation": "spline", "showPoints": false, "lineStyle": "solid", "fillMode": "none", "spanGaps": {} },
+              "axes": { "isLogScale": false },
+              "legend": { "position": "bottom", "mode": "list", "customColors": {} },
+              "thresholds": []
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/PromQLQuery",
+                  "spec": { "name": "A", "query": "sum by (method) (rate(garage_rpc_call_count[5m]))", "disabled": false, "step": "30s", "stats": false, "legend": "{{method}}" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": { "title": "API Golden Signals" },
+          "items": [
+            { "x": 0, "y": 0, "width": 6, "height": 6, "content": { "$ref": "#/spec/panels/api-request-rate" } },
+            { "x": 6, "y": 0, "width": 6, "height": 6, "content": { "$ref": "#/spec/panels/api-error-rate" } },
+            { "x": 0, "y": 6, "width": 8, "height": 6, "content": { "$ref": "#/spec/panels/api-p95-latency" } },
+            { "x": 8, "y": 6, "width": 4, "height": 6, "content": { "$ref": "#/spec/panels/slow-probe-latency" } },
+            { "x": 0, "y": 12, "width": 6, "height": 6, "content": { "$ref": "#/spec/panels/status-distribution" } },
+            { "x": 6, "y": 12, "width": 6, "height": 6, "content": { "$ref": "#/spec/panels/api-trace-volume" } }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": { "title": "Trace / Log Correlation" },
+          "items": [
+            { "x": 0, "y": 0, "width": 4, "height": 6, "content": { "$ref": "#/spec/panels/api-log-volume" } },
+            { "x": 4, "y": 0, "width": 4, "height": 6, "content": { "$ref": "#/spec/panels/caddy-log-volume" } },
+            { "x": 8, "y": 0, "width": 4, "height": 6, "content": { "$ref": "#/spec/panels/postgres-connections" } },
+            { "x": 0, "y": 6, "width": 12, "height": 8, "content": { "$ref": "#/spec/panels/correlated-api-logs" } }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": { "title": "Infrastructure and Object Storage" },
+          "items": [
+            { "x": 0, "y": 0, "width": 6, "height": 6, "content": { "$ref": "#/spec/panels/host-cpu" } },
+            { "x": 6, "y": 0, "width": 6, "height": 6, "content": { "$ref": "#/spec/panels/garage-request-rate" } }
+          ]
+        }
+      }
+    ]
+  }
+}

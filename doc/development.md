@@ -48,6 +48,7 @@ just infra-up-all   # 入口 Caddy http://localhost:8088
 | コマンド | 内容 |
 |----------|------|
 | `just obs-up` / `obs-down` | SigNoz Foundry |
+| `just dashboard-sync` | リポジトリ管理の JSON ダッシュボードを SigNoz API へ同期 |
 | `just infra-up` | postgres, garage, otel-collector |
 | `just infra-up-all` | 上記 + backend/frontend/caddy ビルド起動 |
 | `just infra-down` | アプリ Compose のみ停止 |
@@ -90,9 +91,13 @@ Compose のホスト公開は **`127.0.0.1` のみ**（既定パスワードを 
 | `OTEL_SERVICE_NAME` | API の service.name |
 | `FRONTEND_ORIGIN` | CORS（カンマ区切り可） |
 | `SIGNOZ_OTLP_ENDPOINT` | Gateway → SigNoz（`host:4317`） |
+| `SIGNOZ_API_KEY` | `just dashboard-sync` 用の Editor 権限 SigNoz API キー |
+| `SIGNOZ_ENDPOINT` | ダッシュボード同期先（既定 `http://127.0.0.1:8080`） |
 | `VITE_OTEL_ENDPOINT` | Browser OTLP HTTP |
 
 `GARAGE_ADMIN_TOKEN` は Garage 管理 API 用のランダムトークンで、**管理 API のポートはホスト/LAN に公開しない**。`just setup` は未設定なら `.env` に生成する。`.env` は秘密情報として共有・コミットしない。
+
+`SIGNOZ_API_KEY` は SigNoz UI で作成する **Editor 権限のサービスアカウント API キー**。`just dashboard-sync` が `infra/signoz/dashboards/equipment-reservation-observability.json` と同期スクリプトをコンテナへ `:ro` でマウントし、SigNoz API にのみ作成・更新を行う。キーは `.env` だけに置き、共有・コミットしない。
 
 `TRUSTED_PROXIES` は Caddy と backend 専用の `proxy` ネットワーク（既定 `172.30.0.0/24`）だけを指定する。共有 LAN や `app` ネットワーク全体を指定すると、直接接続者が `X-Forwarded-For` を偽装できる。`just setup` は旧来の広範な既定値をこの CIDR に置き換える。
 
